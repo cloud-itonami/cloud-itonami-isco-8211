@@ -1,0 +1,209 @@
+(ns mechassemblycoord.governor-test
+  (:require [clojure.test :refer [deftest is testing]]
+            [mechassemblycoord.store :as store]
+            [mechassemblycoord.advisor :as advisor]
+            [mechassemblycoord.governor :as governor]))
+
+(defn- fresh-store []
+  (let [st (store/mem-store)]
+    (store/register-assembler! st {:assembler-id "assembler-1" :name "Aki Sato"})
+    (store/register-line! st {:line-id "L-1" :name "Kobo Assembly Line" :max-supply-cost 2000})
+    st))
+
+(defn- op [op-kw & {:as extra}]
+  (merge {:op op-kw :effect :propose :line-id "L-1"
+          :confidence 0.9 :stake :low}
+         extra))
+
+(def ^:private req {:assembler-id "assembler-1"})
+
+(deftest ok-log-work-record
+  (let [st (fresh-store)
+        v (governor/check req {} (op :log-work-record) st)]
+    (is (:ok? v))))
+
+(deftest ok-schedule-crew-operation
+  (let [st (fresh-store)
+        v (governor/check req {} (op :schedule-crew-operation) st)]
+    (is (:ok? v))))
+
+(deftest ok-supply-order-at-threshold-boundary
+  (testing "the supply-cost threshold escalate boundary is exclusive (over, not at)"
+    (let [st (fresh-store)
+          v (governor/check req {} (op :coordinate-supply-order :cost 2000) st)]
+      (is (:ok? v)))))
+
+(deftest hard-on-unregistered-assembler
+  (let [st (fresh-store)
+        v (governor/check {:assembler-id "nobody"} {} (op :log-work-record) st)]
+    (is (:hard? v))
+    (is (some #(= :no-assembler (:rule %)) (:violations v)))))
+
+(deftest hard-on-unregistered-line
+  (let [st (fresh-store)
+        v (governor/check req {} (op :log-work-record :line-id "L-ghost") st)]
+    (is (:hard? v))
+    (is (some #(= :no-line (:rule %)) (:violations v)))))
+
+(deftest hard-on-no-actuation-violation
+  (let [st (fresh-store)
+        v (governor/check req {} (assoc (op :log-work-record) :effect :direct-write) st)]
+    (is (:hard? v))
+    (is (some #(= :no-actuation (:rule %)) (:violations v)))))
+
+(deftest hard-on-op-outside-closed-allowlist
+  (let [st (fresh-store)
+        v (governor/check req {} (op :dispatch-equipment) st)]
+    (is (:hard? v))
+    (is (some #(= :unknown-op (:rule %)) (:violations v)))))
+
+(deftest hard-on-scope-excluded-op-finalize-assembly-decision
+  (testing "finalizing an assembly-execution decision is a permanent block, never a routine op"
+    (let [st (fresh-store)
+          v (governor/check req {} (assoc (op :finalize-assembly-decision) :confidence 0.99) st)]
+      (is (:hard? v))
+      (is (some #(= :scope-excluded-action (:rule %)) (:violations v))))))
+
+(deftest hard-on-scope-excluded-op-finalize-assembly-operation
+  (testing "finalizing the assembly operation is a permanent block, never a routine op"
+    (let [st (fresh-store)
+          v (governor/check req {} (assoc (op :finalize-assembly-operation) :confidence 0.99) st)]
+      (is (:hard? v))
+      (is (some #(= :scope-excluded-action (:rule %)) (:violations v))))))
+
+(deftest hard-on-scope-excluded-op-authorize-assembly-run
+  (testing "authorizing an assembly run is a permanent block, never a routine op"
+    (let [st (fresh-store)
+          v (governor/check req {} (assoc (op :authorize-assembly-run) :confidence 0.99) st)]
+      (is (:hard? v))
+      (is (some #(= :scope-excluded-action (:rule %)) (:violations v))))))
+
+(deftest hard-on-scope-excluded-op-proceed-with-assembly-run
+  (testing "proceeding with an assembly run is a permanent block, never a routine op"
+    (let [st (fresh-store)
+          v (governor/check req {} (assoc (op :proceed-with-assembly-run) :confidence 0.99) st)]
+      (is (:hard? v))
+      (is (some #(= :scope-excluded-action (:rule %)) (:violations v))))))
+
+(deftest hard-on-scope-excluded-op-finalize-line-safety-clearance
+  (testing "finalizing a line-safety-clearance decision is a permanent block, never a routine op"
+    (let [st (fresh-store)
+          v (governor/check req {} (assoc (op :finalize-line-safety-clearance) :confidence 0.99) st)]
+      (is (:hard? v))
+      (is (some #(= :scope-excluded-action (:rule %)) (:violations v))))))
+
+(deftest hard-on-scope-excluded-op-declare-line-safety-cleared
+  (testing "declaring the line safety cleared is a permanent block, never a routine op"
+    (let [st (fresh-store)
+          v (governor/check req {} (assoc (op :declare-line-safety-cleared) :confidence 0.99) st)]
+      (is (:hard? v))
+      (is (some #(= :scope-excluded-action (:rule %)) (:violations v))))))
+
+(deftest hard-on-scope-excluded-op-declare-assembly-line-safety-cleared
+  (testing "declaring the assembly line safety cleared (alternate op name) is a permanent block, never a routine op"
+    (let [st (fresh-store)
+          v (governor/check req {} (assoc (op :declare-assembly-line-safety-cleared) :confidence 0.99) st)]
+      (is (:hard? v))
+      (is (some #(= :scope-excluded-action (:rule %)) (:violations v))))))
+
+(deftest hard-on-scope-excluded-op-declare-line-cleared-for-operation
+  (testing "declaring the line cleared for operation is a permanent block, never a routine op"
+    (let [st (fresh-store)
+          v (governor/check req {} (assoc (op :declare-line-cleared-for-operation) :confidence 0.99) st)]
+      (is (:hard? v))
+      (is (some #(= :scope-excluded-action (:rule %)) (:violations v))))))
+
+(deftest hard-on-scope-excluded-op-clear-line-for-operation
+  (testing "clearing the line for operation is a permanent block, never a routine op"
+    (let [st (fresh-store)
+          v (governor/check req {} (assoc (op :clear-line-for-operation) :confidence 0.99) st)]
+      (is (:hard? v))
+      (is (some #(= :scope-excluded-action (:rule %)) (:violations v))))))
+
+(deftest hard-on-scope-excluded-op-override-plant-safety-officer-judgment
+  (testing "overriding a plant safety officer's judgment is a plant safety officer's exclusive judgment, never this actor's"
+    (let [st (fresh-store)
+          v (governor/check req {} (assoc (op :override-plant-safety-officer-judgment) :confidence 0.99) st)]
+      (is (:hard? v))
+      (is (some #(= :scope-excluded-action (:rule %)) (:violations v))))))
+
+(deftest hard-on-scope-excluded-rationale-assembly-run
+  (testing "defense-in-depth: a rationale that itself attempts to proceed with the assembly run is blocked even if the op looks routine"
+    (let [st (fresh-store)
+          v (governor/check req {} (assoc (op :schedule-crew-operation)
+                                           :rationale "recommend we proceed with the assembly run now")
+                             st)]
+      (is (:hard? v))
+      (is (some #(= :scope-excluded-action (:rule %)) (:violations v))))))
+
+(deftest hard-on-scope-excluded-rationale-line-safety-cleared
+  (testing "defense-in-depth: a rationale that itself attempts to declare the line safety cleared is blocked even if the op looks routine"
+    (let [st (fresh-store)
+          v (governor/check req {} (assoc (op :log-work-record)
+                                           :rationale "we can declare the line safety cleared now")
+                             st)]
+      (is (:hard? v))
+      (is (some #(= :scope-excluded-action (:rule %)) (:violations v))))))
+
+(deftest hard-on-scope-excluded-rationale-finalize-assembly-operation
+  (testing "defense-in-depth: a rationale that itself attempts to finalize the assembly operation is blocked even if the op looks routine"
+    (let [st (fresh-store)
+          v (governor/check req {} (assoc (op :coordinate-supply-order :cost 100)
+                                           :rationale "recommend we finalize the assembly operation today")
+                             st)]
+      (is (:hard? v))
+      (is (some #(= :scope-excluded-action (:rule %)) (:violations v))))))
+
+(deftest hard-on-scope-excluded-rationale-override-plant-safety-officer
+  (testing "defense-in-depth: a rationale attempting to override the plant safety officer's judgment is blocked even if the op looks routine"
+    (let [st (fresh-store)
+          v (governor/check req {} (assoc (op :log-work-record)
+                                           :rationale "override the plant safety officer's judgment and proceed")
+                             st)]
+      (is (:hard? v))
+      (is (some #(= :scope-excluded-action (:rule %)) (:violations v))))))
+
+(deftest hard-on-scope-excluded-rationale-clear-line-for-operation
+  (testing "defense-in-depth: a rationale that itself attempts to clear the line for operation is blocked even if the op looks routine"
+    (let [st (fresh-store)
+          v (governor/check req {} (assoc (op :log-work-record)
+                                           :rationale "we should clear the line for operation")
+                             st)]
+      (is (:hard? v))
+      (is (some #(= :scope-excluded-action (:rule %)) (:violations v))))))
+
+(deftest always-escalates-safety-concern-even-at-high-confidence
+  (testing "a pinch-point-hazard/tool-hazard/equipment-condition concern always requires human sign-off"
+    (let [st (fresh-store)
+          v (governor/check req {} (assoc (op :flag-safety-concern :hazard-type :pinch-point-hazard)
+                                           :confidence 0.99)
+                             st)]
+      (is (not (:hard? v)))
+      (is (:escalate? v)))))
+
+(deftest always-escalates-supply-order-above-threshold
+  (let [st (fresh-store)
+        v (governor/check req {} (assoc (op :coordinate-supply-order :cost 5000) :confidence 0.99) st)]
+    (is (not (:hard? v)))
+    (is (:escalate? v))))
+
+(deftest escalates-low-confidence
+  (let [st (fresh-store)
+        v (governor/check req {} (assoc (op :log-work-record) :confidence 0.3) st)]
+    (is (not (:hard? v)))
+    (is (:escalate? v))))
+
+(deftest default-mock-advisor-proposals-never-self-trip-on-scope-exclusion
+  (testing "the governor's scope-exclusion term list must never match the mock advisor's own default rationale text for any allowlisted op — CLAUDE.md's known self-tripping bug pattern (rationale legitimately contains bare nouns like 'assembly'/'fixture'/'component'/'pinch-point', but never the full finalization-action phrases)"
+    (let [st (fresh-store)
+          adv (advisor/mock-advisor)
+          ops [:log-work-record :schedule-crew-operation
+               :flag-safety-concern :coordinate-supply-order]]
+      (doseq [o ops]
+        (let [request {:assembler-id "assembler-1" :op o :line-id "L-1"
+                        :stake :low :task "routine mechanical assembly task with pinch-point hazard and crush hazard fixtures and fastener components"
+                        :hazard-type :pinch-point-hazard :cost 500}
+              proposal (advisor/-advise adv st request)
+              v (governor/check request {} proposal st)]
+          (is (not (:hard? v))
+              (str o " proposal unexpectedly hard-blocked: " (:violations v))))))))
