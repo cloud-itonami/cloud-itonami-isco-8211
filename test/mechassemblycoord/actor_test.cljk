@@ -1,5 +1,5 @@
 (ns mechassemblycoord.actor-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [mechassemblycoord.actor :as actor]
             [mechassemblycoord.store :as store]))
 
