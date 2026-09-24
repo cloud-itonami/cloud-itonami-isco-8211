@@ -1,0 +1,38 @@
+;; What this vertical's robot physically does, declared for
+;; kotoba.robotics.process (kotoba-lang/robotics). `kbb -M:physics` runs it.
+;;
+;; README "Robotics premise": a line scheduling/logistics coordination robot
+;; does crew scheduling, production/inventory logging and components and
+;; fasteners supply for a mechanical machinery assembler crew; it never does
+;; the assembly work. Its physical work is fastener and kit logistics: a
+;; proof-load check of an incoming lot of M10 bolts before they are released
+;; to the line, and carrying the component kit cart to an assembly station.
+;;
+;; Bolt parameters: M10 tensile stress area 58.0 mm2 and property class 8.8
+;; Rp0.2 = 640 MPa are ISO 898-1 values; the 50 mm specimen length, E and the
+;; hardening modulus are estimates.
+;;
+;; Every number without a cited source is marked `estimate` in its :basis.
+;; Replacing an estimate with a sourced value is this bot's growth work.
+{:physics/schema "itonami.physical-ai.spec.v1"
+ :repo "cloud-itonami/cloud-itonami-isco-8211"
+ :cases
+ [{:id :m10-bolt-proof-check
+   :kind :material
+   :procedure "incoming M10 class 8.8 bolt lot: one bolt shank loaded axially to the check force, looking for any plastic work"
+   :params {:length-m 0.05 :area-m2 5.8e-5 :youngs-modulus-pa 205.0e9 :yield-stress-pa 640.0e6
+            :hardening-pa 2.0e9 :density-kg-m3 7850.0}
+   :sweep {:param :max-force-n :values [20000.0 30000.0 34000.0 38000.0 42000.0]}
+   :quantity :plastic-energy-j
+   :limit {:max 0.01 :basis "estimate: a proof check must leave essentially no plastic work in the shank"}
+   :boundary {:lo 30000.0 :hi 40000.0 :iterations 10}}
+  {:id :kit-cart-to-station
+   :kind :transport
+   :procedure "AMR carries a component kit cart from the kitting area to an assembly station"
+   :params {:mass-kg 60.0 :payload-kg 80.0 :v-max-mps 1.0 :a-max-mps2 0.5
+            :brake-decel-mps2 0.8 :drive-force-n 250.0 :crr 0.02
+            :cog-height-m 0.55 :support-half-length-m 0.30 :max-time-s 1200.0}
+   :sweep {:param :distance-m :values [20.0 40.0 60.0 80.0 100.0]}
+   :quantity :cycle-time-s
+   :limit {:max 75.0 :basis "estimate: the kit must arrive within the ~75 s line takt of the station"}
+   :boundary {:lo 5.0 :hi 300.0}}]}
