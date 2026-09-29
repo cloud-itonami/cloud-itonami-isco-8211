@@ -1,7 +1,7 @@
 (ns mechassemblycoord.store
   "SSoT for the ISCO-08 8211 Mechanical Machinery Assemblers assembly-line
   scheduling/logistics coordination actor (itonami actor pattern,
-  ADR-2607121000 / CLAUDE.md Actors section; README's 'Robotics
+  ADR-2607121000 / AGENTS.md Actors section; README's 'Robotics
   premise' — a line scheduling/logistics coordination robot performs
   crew scheduling, production-run/inventory/progress-record logging
   and components/fasteners-stock supply-order coordination for a
