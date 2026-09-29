@@ -1,7 +1,7 @@
 (ns mechassemblycoord.actor
   "MechAssemblyCoordActor — the ISCO-08 8211 mechanical machinery
   assemblers assembly-line scheduling/logistics coordination actor as
-  a `langgraph.graph/state-graph` (ADR-2607121000 / CLAUDE.md Actors
+  a `langgraph.graph/state-graph` (ADR-2607121000 / AGENTS.md Actors
   section). One graph run = one assembly-line coordination operation
   request (intake -> advise -> govern -> decide -> commit/hold, with a
   human-approval interrupt for escalated proposals). No infinite
